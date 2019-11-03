@@ -12,6 +12,7 @@ from typing import Dict, List
 import numpy as np
 import torch
 from torch.optim.lr_scheduler import LambdaLR
+import cv2
 
 from habitat import Config, logger
 from habitat.utils.visualizations.utils import observations_to_image
@@ -21,6 +22,7 @@ from habitat_baselines.common.env_utils import construct_envs
 from habitat_baselines.common.environments import get_env_class
 from habitat_baselines.common.rollout_storage import RolloutStorage
 from habitat_baselines.common.tensorboard_utils import TensorboardWriter
+from habitat_baselines.common.viewing import Viewer
 from habitat_baselines.common.utils import (
     batch_obs,
     generate_video,
@@ -74,6 +76,9 @@ class PPOTrainer(BaseRLTrainer):
             eps=ppo_cfg.eps,
             max_grad_norm=ppo_cfg.max_grad_norm,
         )
+
+        self.viewer = None
+        self.update_viewer = True
 
     def save_checkpoint(self, file_name: str) -> None:
         r"""Save checkpoint with specified name.
@@ -136,6 +141,9 @@ class PPOTrainer(BaseRLTrainer):
 
         outputs = self.envs.step([a[0].item() for a in actions])
         observations, rewards, dones, infos = [list(x) for x in zip(*outputs)]
+
+        if self.config.SHOW_VIDEO:
+            self.render_viewer(observations, rollouts.step)
 
         env_time += time.time() - t_step_env
 
@@ -572,3 +580,20 @@ class PPOTrainer(BaseRLTrainer):
         )
 
         self.envs.close()
+
+    def render_viewer(self, observations, step):
+        if not self.viewer:
+            self.viewer = Viewer(observations[0], show_map = True, pointgoal_name="pointgoal_with_gps_compass")
+
+        viewer_key = 0
+        if self.update_viewer:
+            for observation in observations:
+                img = self.viewer.draw_observations(observation)
+                title = os.path.basename(self.config.TASK_CONFIG.SIMULATOR.SCENE)
+                cv2.imshow(title, img)
+                viewer_key = cv2.waitKey(100)
+        elif step % 100 == 0:
+            viewer_key = cv2.waitKey(1)
+
+        if viewer_key == ord(' '):
+            self.update_viewer = not self.update_viewer
