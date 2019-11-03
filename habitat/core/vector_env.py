@@ -88,7 +88,7 @@ class VectorEnv:
         make_env_fn: Callable[..., Union[Env, RLEnv]] = _make_env_fn,
         env_fn_args: Sequence[Tuple] = None,
         auto_reset_done: bool = True,
-        multiprocessing_start_method: str = "forkserver",
+        multiprocessing_start_method: str = None,
     ) -> None:
         """..
 
@@ -100,13 +100,22 @@ class VectorEnv:
             done. This functionality is provided for seamless training
             of vectorized environments.
         :param multiprocessing_start_method: the multiprocessing method used to
-            spawn worker processes. Valid methods are
-            :py:`{'spawn', 'forkserver', 'fork'}`; :py:`'forkserver'` is the
+            spawn worker processes. Valid methods can be retrieved using
+            :py:`mp.get_all_start_methods()`. :py:`'forkserver'` is the
             recommended method as it works well with CUDA. If :py:`'fork'` is
             used, the subproccess  must be started before any other GPU useage.
         """
         self._is_waiting = False
         self._is_closed = True
+
+        if not multiprocessing_start_method:
+            supported_start_methods = mp.get_all_start_methods()
+            if "forkserver" in supported_start_methods:
+                multiprocessing_start_method = "forkserver"
+            elif "spawn" in supported_start_methods:
+                multiprocessing_start_method = "spawn"
+            else:
+                multiprocessing_start_method = supported_start_methods[0]
 
         assert (
             env_fn_args is not None and len(env_fn_args) > 0
